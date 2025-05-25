@@ -1,5 +1,4 @@
 import logging
-import schedule
 import time
 import asyncio
 from datetime import datetime, timedelta
@@ -116,16 +115,38 @@ def run_daily_reminders():
     """sync wrapper for daily reminders"""
     asyncio.run(reminder_scheduler.process_daily_reminders())
 
-def setup_reminder_schedule():
-    """setup daily reminder schedule for 8 AM"""
-    schedule.clear()
-    schedule.every().day.at("08:00").do(run_daily_reminders)
-    logger.info("reminder schedule set for 8:00 AM daily")
+def calculate_seconds_until_next_8am():
+    """calculate seconds to sleep until next 8:00 AM"""
+    now = datetime.now()
+    next_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    
+    # if past 8 AM today, schedule for tomorrow
+    if now.hour >= 8:
+        next_8am += timedelta(days=1)
+    
+    sleep_seconds = (next_8am - now).total_seconds()
+    return sleep_seconds, next_8am
 
 def start_reminder_worker():
-    """start the reminder worker in background"""
-    setup_reminder_schedule()
+    """optimized reminder worker - sleeps until needed"""
+    logger.info("starting optimized reminder scheduler...")
     
     while True:
-        schedule.run_pending()
-        time.sleep(60)  # check every minute 
+        try:
+            # calculate sleep time until next 8 AM
+            sleep_seconds, next_8am = calculate_seconds_until_next_8am()
+            
+            logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
+            time.sleep(sleep_seconds)
+            
+            # execute daily reminders
+            logger.info("waking up to send daily reminders...")
+            run_daily_reminders()
+            
+            # small buffer to avoid immediate re-execution
+            time.sleep(60)
+            
+        except Exception as e:
+            logger.exception(f"error in reminder worker: {e}")
+            # fallback: sleep 1 hour on error
+            time.sleep(3600) 
