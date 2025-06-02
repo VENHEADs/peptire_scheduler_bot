@@ -33,6 +33,9 @@ venv.bak/
 # Database
 *.db
 *.sqlite3
+*.db.backup
+bot.log
+nohup.out
 
 # IDE
 .vscode/

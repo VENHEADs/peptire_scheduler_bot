@@ -1,12 +1,18 @@
 import logging
 import time
 import asyncio
+import os
+import ssl
 from datetime import datetime, timedelta
 from database.operations import SessionLocal, get_or_create_user
 from database.models import User, Schedule, Reminder
 from parser.schedule_parser import parse_frequency_to_days
 from telegram import Bot
 from config.settings import TELEGRAM_BOT_TOKEN
+
+# configure SSL for macOS
+if os.name == 'posix' and os.uname().sysname == 'Darwin':
+    ssl._create_default_https_context = ssl._create_unverified_context
 
 logger = logging.getLogger(__name__)
 

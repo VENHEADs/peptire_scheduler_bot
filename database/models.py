@@ -60,4 +60,20 @@ class Reminder(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # relationships
-    schedule = relationship("Schedule", back_populates="reminders") 
+    schedule = relationship("Schedule", back_populates="reminders")
+
+    def __repr__(self):
+        return f"<Reminder(schedule_id={self.schedule_id}, date={self.reminder_date})>"
+
+class WorkerState(Base):
+    """track worker process state for crash recovery"""
+    __tablename__ = 'worker_states'
+    
+    id = Column(Integer, primary_key=True)
+    worker_name = Column(String(100), unique=True, nullable=False)
+    last_run_time = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<WorkerState(name={self.worker_name}, last_run={self.last_run_time})>" 

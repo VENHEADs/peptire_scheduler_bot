@@ -1,6 +1,12 @@
 import os
 import logging
 from dotenv import load_dotenv
+import ssl
+import certifi
+
+# configure SSL for macOS before any other imports
+if os.name == 'posix' and os.uname().sysname == 'Darwin':
+    ssl._create_default_https_context = ssl._create_unverified_context
 
 # load environment variables from .env file
 load_dotenv()

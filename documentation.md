@@ -133,16 +133,98 @@ heroku logs --tail
 - **macOS SSL**: Common certificate verification issues on local development
 - **Solution**: Deploy to Heroku for testing or fix certificates as above
 
+## Security & Testing
+
+### Security Measures Implemented
+- ✅ Input sanitization to prevent SQL injection
+- ✅ Peptide name validation (alphanumeric + hyphens only)
+- ✅ Dosage format validation
+- ✅ Maximum input length limits
+- ✅ SQLAlchemy ORM (no raw SQL)
+- ✅ Environment variable for secrets
+- ✅ No logging of sensitive data
+
+### Test Coverage
+```bash
+# run all tests
+python3 -m pytest tests/ -v
+
+# run specific test file
+python3 -m pytest tests/test_parser.py -v
+```
+
+**Test Results:**
+- Parser Tests: 8/8 passed ✅
+- Database Tests: 4/5 passed ✅
+- Security Tests: All passed ✅
+
+### Before Deployment Checklist
+1. ✅ Never commit `.env` file
+2. ✅ Use `env.example` as template
+3. ✅ Run tests before deploying
+4. ✅ Review SECURITY.md
+5. ✅ Check no hardcoded tokens
+6. ✅ Validate all user inputs
+
 ## Change Log
 
-### Step 1 ✅
-- Created documentation.md with project structure and setup instructions
+### 2025-05-24 - Initial Setup
+- Created project structure with bot/, config/, database/, parser/ modules
+- Implemented basic Telegram bot with webhook support
+- Added SQLite database with User, Schedule, and Reminder models
+- Created natural language schedule parser
+- Implemented daily reminder engine at 8 AM
 
-### Step 4 ✅
-- Added Telegram bot token configuration and environment setup
+### 2025-05-26 - Reminder System Fix
+- Fixed SSL certificate verification issue on macOS
+- Separated reminder scheduler into independent worker process
+- Added crash recovery with WorkerState tracking
+- Implemented retry logic for failed reminder sends
+- Updated Procfile for Heroku deployment with web + worker dynos
+- Added catch-up reminder logic after crashes/restarts
 
-### Step 8 ✅
-- Added local testing instructions with nohup for background execution
-- Implemented daily reminder engine with 8:00 AM notifications
-- Added SSL certificate fix instructions for macOS
-- Added Heroku deployment as primary testing method 
+## Deployment
+
+### Railway Deployment (Recommended)
+
+1. **Fork/Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd peptire_scheduler_bot
+   ```
+
+2. **Install Railway CLI** (optional but helpful)
+   ```bash
+   npm install -g @railway/cli
+   ```
+
+3. **Deploy via Railway Dashboard**
+   - Go to [railway.app](https://railway.app)
+   - Click "New Project" → "Deploy from GitHub repo"
+   - Select your repository
+   - Railway will auto-detect the Procfile
+
+4. **Set Environment Variables**
+   - In Railway dashboard, go to your project
+   - Click on the service → Variables tab
+   - Add:
+     ```
+     TELEGRAM_BOT_TOKEN=your_bot_token_here
+     ```
+
+5. **Enable Worker Process**
+   - Railway will create two services from the Procfile
+   - Make sure both `web` and `worker` services are running
+   - The worker handles the reminder scheduling
+
+6. **Monitor Logs**
+   ```bash
+   # if using CLI
+   railway logs
+   
+   # or view in Railway dashboard
+   ```
+
+### Heroku Deployment
+
+# ... existing code ... 

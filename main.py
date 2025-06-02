@@ -2,11 +2,18 @@
 
 import logging
 import threading
+import os
+import ssl
+import certifi
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config.settings import TELEGRAM_BOT_TOKEN, logger
 from database.operations import init_database, get_or_create_user, create_schedule, get_active_schedules
 from parser.schedule_parser import parse_schedule
 from bot.scheduler import start_reminder_worker
+
+# configure SSL for macOS
+if os.name == 'posix' and os.uname().sysname == 'Darwin':
+    ssl._create_default_https_context = ssl._create_unverified_context
 
 async def start(update, context):
     """handle /start command"""
@@ -105,11 +112,6 @@ def main():
     # initialize database
     init_database()
     
-    # start reminder scheduler in background thread
-    reminder_thread = threading.Thread(target=start_reminder_worker, daemon=True)
-    reminder_thread.start()
-    logger.info("reminder scheduler started in background")
-    
     # create application
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
@@ -119,9 +121,23 @@ def main():
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # start the bot
-    logger.info("bot is running...")
-    application.run_polling()
+    # check if running in production with webhook
+    webhook_url = os.getenv('WEBHOOK_URL')
+    port = int(os.getenv('PORT', 8443))
+    
+    if webhook_url:
+        # production mode with webhooks
+        logger.info(f"starting bot with webhook: {webhook_url}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=TELEGRAM_BOT_TOKEN,
+            webhook_url=f"{webhook_url}/{TELEGRAM_BOT_TOKEN}"
+        )
+    else:
+        # development mode with polling
+        logger.info("bot is running in polling mode...")
+        application.run_polling()
 
 if __name__ == '__main__':
     main()
