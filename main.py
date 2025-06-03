@@ -21,33 +21,50 @@ if os.name == 'posix' and os.uname().sysname == 'Darwin':
 
 def update_last_run_time():
     """update the last successful reminder run time"""
+    logger.info("starting update_last_run_time")
     db = SessionLocal()
     try:
+        logger.info("querying for existing worker state")
         state = db.query(WorkerState).filter(WorkerState.worker_name == "reminder_scheduler").first()
         if not state:
+            logger.info("creating new worker state record")
             state = WorkerState(worker_name="reminder_scheduler")
             db.add(state)
+        else:
+            logger.info("updating existing worker state record")
         
         state.last_run_time = datetime.utcnow()
+        logger.info("committing worker state to database")
         db.commit()
-        logger.info("updated last run time")
+        logger.info("successfully updated last run time")
     except Exception as e:
         logger.exception(f"failed to update last run time: {e}")
         db.rollback()
+        raise  # re-raise to see if this is causing the issue
     finally:
+        logger.info("closing database connection")
         db.close()
 
 async def run_reminder_with_retry(max_retries=3):
     """run reminder with retry logic"""
+    logger.info(f"starting run_reminder_with_retry with max_retries={max_retries}")
+    
     for attempt in range(max_retries):
         try:
+            logger.info(f"reminder attempt {attempt + 1}/{max_retries}")
             await reminder_scheduler.process_daily_reminders()
+            logger.info(f"reminder attempt {attempt + 1} succeeded")
             update_last_run_time()
+            logger.info("successfully updated last run time")
             return True
         except Exception as e:
             logger.exception(f"reminder attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                await asyncio.sleep(60 * (attempt + 1))  # exponential backoff
+                sleep_time = 60 * (attempt + 1)
+                logger.info(f"sleeping {sleep_time} seconds before retry...")
+                await asyncio.sleep(sleep_time)  # exponential backoff
+            else:
+                logger.error(f"all {max_retries} attempts failed")
     return False
 
 def reminder_worker():
@@ -56,16 +73,26 @@ def reminder_worker():
     
     # run first reminder immediately
     logger.info("running initial reminder check...")
-    asyncio.run(run_reminder_with_retry())
+    try:
+        asyncio.run(run_reminder_with_retry())
+        logger.info("initial reminder check completed successfully")
+    except Exception as e:
+        logger.exception(f"initial reminder check failed: {e}")
     
+    iteration = 0
     while True:
         try:
+            iteration += 1
+            logger.info(f"starting reminder iteration #{iteration}")
+            
             # TEST MODE: wait 1 minute instead of until 8 AM
             logger.info("sleeping 1 minute until next reminder check...")
             time.sleep(60)  # 1 minute
             
+            logger.info(f"woke up from sleep, starting reminder iteration #{iteration}")
+            
             # execute daily reminders with retry
-            logger.info("waking up to send reminders...")
+            logger.info("calling run_reminder_with_retry()...")
             success = asyncio.run(run_reminder_with_retry())
             
             if not success:
@@ -73,10 +100,18 @@ def reminder_worker():
             else:
                 logger.info("reminder check completed successfully")
                 
+            logger.info(f"completed reminder iteration #{iteration}, continuing loop...")
+                
+        except KeyboardInterrupt:
+            logger.info("reminder worker stopped by keyboard interrupt")
+            break
         except Exception as e:
-            logger.exception(f"unexpected error in reminder worker: {e}")
+            logger.exception(f"unexpected error in reminder worker iteration #{iteration}: {e}")
+            logger.info("continuing after error...")
             # sleep 1 minute on error in test mode
             time.sleep(60)
+    
+    logger.error("reminder worker exited main loop - this should not happen!")
 
 async def start(update, context):
     """handle /start command"""
