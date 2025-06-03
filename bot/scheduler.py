@@ -184,8 +184,8 @@ class ReminderScheduler:
         finally:
             db.close()
 
-# create scheduler instance with test mode
-reminder_scheduler = ReminderScheduler(test_mode=True)
+# create scheduler instance with production mode (not test mode)
+reminder_scheduler = ReminderScheduler(test_mode=False)
 
 def run_daily_reminders():
     """sync wrapper for daily reminders"""

@@ -183,6 +183,17 @@ python3 -m pytest tests/test_parser.py -v
 - Updated Procfile for Heroku deployment with web + worker dynos
 - Added catch-up reminder logic after crashes/restarts
 
+## Recent Updates
+
+### 2024-12-21: Reminder System Fixes
+- **Fixed connection pool timeout**: Separate Bot instance for reminders with larger connection pool (20 connections)
+- **Verified test mode**: Test reminders working every minute with proper message delivery
+- **Switched to production**: 8 AM daily scheduling with frequency-based filtering
+- **Architecture simplified**: Single service deployment (main.py handles both bot and reminders)
+- **Railway deployment**: Ready for production with all fixes applied
+
+### 2024-12-21: Security & Testing Implementation
+
 ## Deployment
 
 ### Railway Deployment (Recommended)
