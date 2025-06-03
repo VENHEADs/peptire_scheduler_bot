@@ -8,6 +8,7 @@ from database.operations import SessionLocal, get_or_create_user
 from database.models import User, Schedule, Reminder
 from parser.schedule_parser import parse_frequency_to_days
 from telegram import Bot
+from telegram.request import HTTPXRequest
 from config.settings import TELEGRAM_BOT_TOKEN
 
 # configure SSL for macOS
@@ -20,7 +21,15 @@ class ReminderScheduler:
     """handles daily reminder notifications"""
     
     def __init__(self, test_mode=False):
-        self.bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        # create separate HTTP client for reminders with larger pool
+        request = HTTPXRequest(
+            connection_pool_size=20,  # larger pool
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30
+        )
+        self.bot = Bot(token=TELEGRAM_BOT_TOKEN, request=request)
         self.test_mode = test_mode
     
     def should_send_reminder_today(self, schedule_obj, today):
