@@ -19,11 +19,16 @@ logger = logging.getLogger(__name__)
 class ReminderScheduler:
     """handles daily reminder notifications"""
     
-    def __init__(self):
+    def __init__(self, test_mode=False):
         self.bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        self.test_mode = test_mode
     
     def should_send_reminder_today(self, schedule_obj, today):
         """check if user should get reminder today based on frequency"""
+        # TEST MODE: always send reminders
+        if self.test_mode:
+            return True
+            
         days_since_start = (today - schedule_obj.start_date.date()).days
         frequency_days = parse_frequency_to_days(schedule_obj.frequency)
         
@@ -50,7 +55,11 @@ class ReminderScheduler:
     
     async def process_daily_reminders(self):
         """process all users and send daily reminders"""
-        logger.info("processing daily reminders...")
+        if self.test_mode:
+            logger.info("processing TEST reminders (every minute)...")
+        else:
+            logger.info("processing daily reminders...")
+            
         today = datetime.utcnow().date()
         
         db = SessionLocal()
@@ -60,20 +69,26 @@ class ReminderScheduler:
                 Schedule.is_active == True
             ).all()
             
+            if not active_schedules:
+                logger.info("no active schedules found")
+                return
+            
             for schedule_obj in active_schedules:
                 # check if reminder needed today
                 if not self.should_send_reminder_today(schedule_obj, today):
                     continue
                 
-                # check if reminder already sent today
-                existing_reminder = db.query(Reminder).filter(
-                    Reminder.schedule_id == schedule_obj.id,
-                    Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
-                    Reminder.is_sent == True
-                ).first()
-                
-                if existing_reminder:
-                    continue  # already sent today
+                # in test mode, don't check if already sent today
+                if not self.test_mode:
+                    # check if reminder already sent today
+                    existing_reminder = db.query(Reminder).filter(
+                        Reminder.schedule_id == schedule_obj.id,
+                        Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
+                        Reminder.is_sent == True
+                    ).first()
+                    
+                    if existing_reminder:
+                        continue  # already sent today
                 
                 # get user info
                 user = db.query(User).filter(User.id == schedule_obj.user_id).first()
@@ -83,8 +98,9 @@ class ReminderScheduler:
                 # create reminder message
                 days_remaining = schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days
                 
+                test_prefix = "🧪 TEST REMINDER - " if self.test_mode else ""
                 message = (
-                    f"🌅 <b>Good morning!</b>\n\n"
+                    f"{test_prefix}🌅 <b>Good morning!</b>\n\n"
                     f"💊 Today you need to take: <b>{schedule_obj.peptide_name}</b>\n"
                     f"📏 Dosage: <b>{schedule_obj.dosage}</b>\n"
                     f"📅 Days remaining in cycle: <b>{days_remaining}</b>\n\n"
@@ -106,16 +122,20 @@ class ReminderScheduler:
                 db.add(reminder)
                 
             db.commit()
-            logger.info("daily reminders processing complete")
+            
+            if self.test_mode:
+                logger.info("TEST reminders processing complete")
+            else:
+                logger.info("daily reminders processing complete")
             
         except Exception as e:
-            logger.exception(f"error processing daily reminders: {e}")
+            logger.exception(f"error processing reminders: {e}")
             db.rollback()
         finally:
             db.close()
 
-# create scheduler instance
-reminder_scheduler = ReminderScheduler()
+# create scheduler instance with test mode
+reminder_scheduler = ReminderScheduler(test_mode=True)
 
 def run_daily_reminders():
     """sync wrapper for daily reminders"""

@@ -10,7 +10,7 @@ import os
 import ssl
 import certifi
 from datetime import datetime, timedelta
-from bot.scheduler import reminder_scheduler, calculate_seconds_until_next_8am
+from bot.scheduler import reminder_scheduler
 from database.operations import init_database, SessionLocal
 from database.models import WorkerState
 from config.settings import logger
@@ -48,16 +48,6 @@ def update_last_run_time():
     finally:
         db.close()
 
-def should_run_catch_up_reminders():
-    """check if we need to run catch-up reminders after a crash/restart"""
-    last_run = get_last_run_time()
-    if not last_run:
-        return True  # first run
-    
-    # if last run was more than 24 hours ago, we missed reminders
-    hours_since_last_run = (datetime.utcnow() - last_run).total_seconds() / 3600
-    return hours_since_last_run > 24
-
 async def run_reminder_with_retry(max_retries=3):
     """run reminder with retry logic"""
     for attempt in range(max_retries):
@@ -72,42 +62,38 @@ async def run_reminder_with_retry(max_retries=3):
     return False
 
 def main():
-    """main worker loop with crash recovery"""
-    logger.info("starting reminder worker process...")
+    """main worker loop with 1-minute testing schedule"""
+    logger.info("starting TEST reminder worker process - sending reminders every minute...")
     
     # initialize database
     init_database()
     
-    # check if we need to run catch-up reminders
-    if should_run_catch_up_reminders():
-        logger.info("running catch-up reminders after restart...")
-        asyncio.run(run_reminder_with_retry())
+    # run first reminder immediately
+    logger.info("running initial reminder check...")
+    asyncio.run(run_reminder_with_retry())
     
     while True:
         try:
-            # calculate sleep time until next 8 AM
-            sleep_seconds, next_8am = calculate_seconds_until_next_8am()
-            
-            logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
-            time.sleep(sleep_seconds)
+            # TEST MODE: wait 1 minute instead of until 8 AM
+            logger.info("sleeping 1 minute until next reminder check...")
+            time.sleep(60)  # 1 minute
             
             # execute daily reminders with retry
-            logger.info("waking up to send daily reminders...")
+            logger.info("waking up to send reminders...")
             success = asyncio.run(run_reminder_with_retry())
             
             if not success:
                 logger.error("failed to send reminders after all retries")
-            
-            # small buffer to avoid immediate re-execution
-            time.sleep(60)
+            else:
+                logger.info("reminder check completed successfully")
             
         except KeyboardInterrupt:
             logger.info("worker stopped by user")
             break
         except Exception as e:
             logger.exception(f"unexpected error in worker loop: {e}")
-            # sleep 5 minutes on unexpected error
-            time.sleep(300)
+            # sleep 1 minute on error in test mode
+            time.sleep(60)
 
 if __name__ == '__main__':
     main() 
