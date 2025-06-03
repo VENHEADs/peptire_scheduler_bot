@@ -62,4 +62,4 @@ All these formats are tested and working:
 - Natural language schedule parsing ("GHK-Cu 1mg daily for 6 weeks")
 - Daily 8:00 AM reminders
 - Cycle duration tracking
-- SQLite database storage 
+- SQLite database storage # Production mode - 8 AM daily reminders
