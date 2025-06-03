@@ -13,7 +13,7 @@ from config.settings import TELEGRAM_BOT_TOKEN, logger
 from database.operations import init_database, get_or_create_user, create_schedule, get_active_schedules, SessionLocal
 from database.models import WorkerState
 from parser.schedule_parser import parse_schedule
-from bot.scheduler import reminder_scheduler
+from bot.scheduler import reminder_scheduler, calculate_seconds_until_next_8am
 
 # configure SSL for macOS
 if os.name == 'posix' and os.uname().sysname == 'Darwin':
@@ -69,7 +69,7 @@ async def run_reminder_with_retry(max_retries=3):
 
 def reminder_worker():
     """reminder worker function that runs in background thread"""
-    logger.info("starting embedded TEST reminder worker - sending reminders every minute...")
+    logger.info("starting optimized reminder worker - 8 AM daily scheduling...")
     
     # run first reminder immediately
     logger.info("running initial reminder check...")
@@ -85,11 +85,12 @@ def reminder_worker():
             iteration += 1
             logger.info(f"starting reminder iteration #{iteration}")
             
-            # TEST MODE: wait 1 minute instead of until 8 AM
-            logger.info("sleeping 1 minute until next reminder check...")
-            time.sleep(60)  # 1 minute
+            # PRODUCTION MODE: calculate sleep time until next 8 AM
+            sleep_seconds, next_8am = calculate_seconds_until_next_8am()
+            logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
+            time.sleep(sleep_seconds)
             
-            logger.info(f"woke up from sleep, starting reminder iteration #{iteration}")
+            logger.info(f"woke up at 8 AM, starting reminder iteration #{iteration}")
             
             # execute daily reminders with retry
             logger.info("calling run_reminder_with_retry()...")
@@ -101,6 +102,9 @@ def reminder_worker():
                 logger.info("reminder check completed successfully")
                 
             logger.info(f"completed reminder iteration #{iteration}, continuing loop...")
+            
+            # small buffer to avoid immediate re-execution
+            time.sleep(60)
                 
         except KeyboardInterrupt:
             logger.info("reminder worker stopped by keyboard interrupt")
@@ -108,8 +112,8 @@ def reminder_worker():
         except Exception as e:
             logger.exception(f"unexpected error in reminder worker iteration #{iteration}: {e}")
             logger.info("continuing after error...")
-            # sleep 1 minute on error in test mode
-            time.sleep(60)
+            # sleep 1 hour on error in production mode
+            time.sleep(3600)
     
     logger.error("reminder worker exited main loop - this should not happen!")
 
@@ -193,7 +197,7 @@ async def handle_message(update, context):
             f"⏰ Frequency: {parsed.frequency}\n"
             f"📅 Cycle: {parsed.cycle_duration_days} days\n"
             f"😴 Rest: {parsed.rest_period_days} days\n\n"
-            f"🧪 TEST MODE: I'll send you reminders every minute for testing!"
+            f"🌅 I'll send you daily reminders at 8:00 AM!"
         )
     else:
         await update.message.reply_text(
@@ -205,7 +209,7 @@ async def handle_message(update, context):
 
 def main():
     """start the bot with embedded reminder worker"""
-    logger.info("starting Peptide Scheduler Bot with embedded reminder worker...")
+    logger.info("starting Peptide Scheduler Bot with embedded reminder worker (production mode)...")
     
     # initialize database
     init_database()
