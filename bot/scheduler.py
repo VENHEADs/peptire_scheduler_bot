@@ -57,9 +57,57 @@ class ReminderScheduler:
         """process all users and send daily reminders"""
         if self.test_mode:
             logger.info("processing TEST reminders (every minute)...")
-        else:
-            logger.info("processing daily reminders...")
             
+            # SIMPLE TEST MODE: send to all active schedules every time
+            db = SessionLocal()
+            try:
+                # get all active schedules
+                active_schedules = db.query(Schedule).filter(
+                    Schedule.is_active == True
+                ).all()
+                
+                logger.info(f"found {len(active_schedules)} active schedules")
+                
+                if not active_schedules:
+                    logger.info("no active schedules found")
+                    return
+                
+                for schedule_obj in active_schedules:
+                    # get user info
+                    user = db.query(User).filter(User.id == schedule_obj.user_id).first()
+                    if not user:
+                        logger.warning(f"user not found for schedule {schedule_obj.id}")
+                        continue
+                    
+                    # create simple test message
+                    test_message = (
+                        f"🧪 TEST REMINDER #{datetime.utcnow().minute}\n\n"
+                        f"💊 Peptide: <b>{schedule_obj.peptide_name}</b>\n"
+                        f"📏 Dosage: <b>{schedule_obj.dosage}</b>\n"
+                        f"⏰ Frequency: <b>{schedule_obj.frequency}</b>\n\n"
+                        f"This is a test reminder sent every minute! 🔔"
+                    )
+                    
+                    # send reminder
+                    logger.info(f"sending test reminder to user {user.telegram_id}")
+                    success = await self.send_reminder(user.telegram_id, test_message)
+                    
+                    if success:
+                        logger.info(f"✅ test reminder sent successfully to user {user.telegram_id}")
+                    else:
+                        logger.error(f"❌ failed to send test reminder to user {user.telegram_id}")
+                
+                logger.info("TEST reminders processing complete")
+                return
+                
+            except Exception as e:
+                logger.exception(f"error in test mode: {e}")
+                return
+            finally:
+                db.close()
+        
+        # NORMAL MODE (original logic)
+        logger.info("processing daily reminders...")
         today = datetime.utcnow().date()
         
         db = SessionLocal()
@@ -78,17 +126,15 @@ class ReminderScheduler:
                 if not self.should_send_reminder_today(schedule_obj, today):
                     continue
                 
-                # in test mode, don't check if already sent today
-                if not self.test_mode:
-                    # check if reminder already sent today
-                    existing_reminder = db.query(Reminder).filter(
-                        Reminder.schedule_id == schedule_obj.id,
-                        Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
-                        Reminder.is_sent == True
-                    ).first()
-                    
-                    if existing_reminder:
-                        continue  # already sent today
+                # check if reminder already sent today
+                existing_reminder = db.query(Reminder).filter(
+                    Reminder.schedule_id == schedule_obj.id,
+                    Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
+                    Reminder.is_sent == True
+                ).first()
+                
+                if existing_reminder:
+                    continue  # already sent today
                 
                 # get user info
                 user = db.query(User).filter(User.id == schedule_obj.user_id).first()
@@ -98,9 +144,8 @@ class ReminderScheduler:
                 # create reminder message
                 days_remaining = schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days
                 
-                test_prefix = "🧪 TEST REMINDER - " if self.test_mode else ""
                 message = (
-                    f"{test_prefix}🌅 <b>Good morning!</b>\n\n"
+                    f"🌅 <b>Good morning!</b>\n\n"
                     f"💊 Today you need to take: <b>{schedule_obj.peptide_name}</b>\n"
                     f"📏 Dosage: <b>{schedule_obj.dosage}</b>\n"
                     f"📅 Days remaining in cycle: <b>{days_remaining}</b>\n\n"
@@ -122,11 +167,7 @@ class ReminderScheduler:
                 db.add(reminder)
                 
             db.commit()
-            
-            if self.test_mode:
-                logger.info("TEST reminders processing complete")
-            else:
-                logger.info("daily reminders processing complete")
+            logger.info("daily reminders processing complete")
             
         except Exception as e:
             logger.exception(f"error processing reminders: {e}")
