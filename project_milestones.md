@@ -13,9 +13,9 @@
 - [x] 8. Daily reminder engine - morning notifications "today you need to take XXX"
 
 ## Phase 3: Schedule Management  
-- [ ] 9. Add/edit schedule commands - parse user input from example format
-- [ ] 10. Cycle tracking - start dates, duration countdown, rest periods
-- [ ] 11. User commands - /start, /status, /stop, /help
+- [x] 9. Add/edit schedule commands - parse user input from example format
+- [x] 10. Cycle tracking - start dates, duration countdown, rest periods
+- [x] 11. User commands - /start, /status, /stop, /stopall, /help
 
 ## Phase 4: Deployment
 - [x] 12. Local testing setup - development environment
@@ -40,7 +40,16 @@
 - [ ] 27. Integration tests - end-to-end bot testing
 - [ ] 28. Load testing - handle multiple users
 
+## Phase 7: Refactor & Production Readiness (2025-11-05)
+- [x] 29. Fix test environment - allow tests without bot token
+- [x] 30. Schedule lifecycle - auto-deactivation when cycles complete
+- [x] 31. Completion notifications - notify users when cycles end with rest period info
+- [x] 32. Enhanced /status - show days remaining, next dose dates
+- [x] 33. Stop commands - /stop and /stopall implemented
+- [x] 34. Architecture cleanup - removed unused worker.py
+
 ## Current Status
-- **Active Milestone**: Ready for Railway deployment
-- **Next Up**: Deploy and monitor in production
-- **Blockers**: None 
+- **Active Milestone**: Production-ready for Railway deployment
+- **Next Up**: Deploy to Railway and monitor in production
+- **Blockers**: None
+- **Tests**: 15/16 passing (1 pre-existing test issue unrelated to refactor) 

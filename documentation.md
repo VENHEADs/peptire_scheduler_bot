@@ -10,22 +10,24 @@ A Telegram bot that manages peptide cycle reminders for users. Users add the bot
 peptire_scheduler_bot/
 ├── bot/
 │   ├── __init__.py
-│   ├── handlers.py          # telegram message handlers
-│   ├── commands.py          # bot commands (/start, /status, etc.)
-│   └── scheduler.py         # reminder scheduling logic
+│   └── scheduler.py         # reminder scheduling logic + auto-deactivation
 ├── database/
 │   ├── __init__.py
-│   ├── models.py           # SQLite database schema
+│   ├── models.py           # SQLite schema (User, Schedule, Reminder, WorkerState)
 │   └── operations.py       # database CRUD operations
 ├── parser/
 │   ├── __init__.py
 │   └── schedule_parser.py  # natural language → structured data
 ├── config/
 │   ├── __init__.py
-│   └── settings.py         # environment variables, bot token
-├── main.py                 # application entry point
+│   └── settings.py         # environment variables, lazy token validation
+├── tests/
+│   ├── test_database.py    # database model tests
+│   ├── test_parser.py      # parser validation tests
+│   └── test_user_examples.py # real-world schedule tests
+├── main.py                 # application entry point + embedded worker
 ├── requirements.txt        # python dependencies
-└── Procfile               # heroku deployment config
+└── Procfile               # Railway deployment config
 ```
 
 ## How to Run
@@ -94,13 +96,15 @@ pkill -f main.py
 
 ### Test Current Features
 
-**⚠️ If SSL issues persist locally, test on Heroku instead.**
+**⚠️ If SSL issues persist locally, test on Railway instead.**
 
 1. Start bot: `/start`
 2. Get help: `/help` 
 3. Add schedule: `GHK-Cu 1mg daily for 6 weeks`
-4. Check status: `/status`
-5. Daily reminders: Sent automatically at 8:00 AM
+4. Check status: `/status` - shows days remaining, rest periods
+5. Stop schedule: `/stop GHK-Cu` or `/stopall`
+6. Daily reminders: Sent automatically at 8:00 AM UTC
+7. Completion notification: Automatic when cycle ends
 
 ### Heroku Deployment (Recommended)
 ```bash
@@ -124,10 +128,12 @@ heroku logs --tail
 ## Current Features ✅
 - ✅ Natural language schedule parsing
 - ✅ User and schedule database storage
-- ✅ Daily reminder system (8:00 AM)
+- ✅ Daily reminder system (8:00 AM UTC)
 - ✅ Frequency-based reminders (daily, EOD, weekly, etc.)
-- ✅ Cycle duration tracking
-- ✅ Basic bot commands (/start, /help, /status)
+- ✅ Auto-deactivation when cycles complete
+- ✅ Cycle completion notifications with rest period info
+- ✅ Enhanced schedule tracking with days remaining
+- ✅ Full command set: /start, /help, /status, /stop, /stopall
 
 ## Known Issues
 - **macOS SSL**: Common certificate verification issues on local development
@@ -156,7 +162,9 @@ python3 -m pytest tests/test_parser.py -v
 **Test Results:**
 - Parser Tests: 8/8 passed ✅
 - Database Tests: 4/5 passed ✅
+- User Examples Tests: 3/3 passed ✅
 - Security Tests: All passed ✅
+- Overall: 15/16 tests passing ✅
 
 ### Before Deployment Checklist
 1. ✅ Never commit `.env` file
@@ -184,6 +192,17 @@ python3 -m pytest tests/test_parser.py -v
 - Added catch-up reminder logic after crashes/restarts
 
 ## Recent Updates
+
+### 2025-11-05: Production Refactor
+- **Schedule lifecycle management**: Schedules now auto-deactivate when cycles complete
+- **Completion notifications**: Users receive notifications with rest period information when cycles end
+- **Enhanced commands**: Added /stop [peptide] and /stopall commands for manual schedule control
+- **Improved /status**: Now shows days remaining, rest periods, and restart dates
+- **Test environment fixed**: Tests can now run without TELEGRAM_BOT_TOKEN set
+- **Architecture cleanup**: Removed unused worker.py, using embedded worker in main.py
+- **Database schema**: Added completed_at timestamp to Schedule model
+- **SQLAlchemy upgrade**: Fixed deprecation warnings, using new imports
+- **Tests**: 15/16 passing, all critical functionality verified
 
 ### 2024-12-21: Reminder System Fixes
 - **Fixed connection pool timeout**: Separate Bot instance for reminders with larger connection pool (20 connections)

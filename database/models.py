@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
 Base = declarative_base()
@@ -38,6 +37,7 @@ class Schedule(Base):
     # tracking
     start_date = Column(DateTime, nullable=False)
     is_active = Column(Boolean, default=True)
+    completed_at = Column(DateTime, nullable=True)
     notes = Column(Text)
     
     created_at = Column(DateTime, default=datetime.utcnow)
