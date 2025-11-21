@@ -11,10 +11,14 @@ if os.name == 'posix' and os.uname().sysname == 'Darwin':
 # load environment variables from .env file
 load_dotenv()
 
-# telegram bot configuration
+# telegram bot configuration - lazy validation for tests
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+
+def get_bot_token() -> str:
+    """get bot token with runtime validation"""
+    if not TELEGRAM_BOT_TOKEN:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+    return TELEGRAM_BOT_TOKEN
 
 # database configuration  
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///peptide_bot.db')

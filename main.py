@@ -9,7 +9,7 @@ import time
 import asyncio
 from datetime import datetime
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from config.settings import TELEGRAM_BOT_TOKEN, logger
+from config.settings import get_bot_token, logger
 from database.operations import init_database, get_or_create_user, create_schedule, get_active_schedules, SessionLocal
 from database.models import WorkerState
 from parser.schedule_parser import parse_schedule
@@ -220,7 +220,7 @@ def main():
     logger.info("embedded reminder worker started in background thread")
     
     # create application
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application = Application.builder().token(get_bot_token()).build()
     
     # add handlers
     application.add_handler(CommandHandler("start", start))
@@ -235,11 +235,12 @@ def main():
     if webhook_url:
         # production mode with webhooks
         logger.info(f"starting bot with webhook: {webhook_url}")
+        bot_token = get_bot_token()
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
-            url_path=TELEGRAM_BOT_TOKEN,
-            webhook_url=f"{webhook_url}/{TELEGRAM_BOT_TOKEN}"
+            url_path=bot_token,
+            webhook_url=f"{webhook_url}/{bot_token}"
         )
     else:
         # development mode with polling
