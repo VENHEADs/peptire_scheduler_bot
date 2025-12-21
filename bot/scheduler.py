@@ -55,6 +55,19 @@ class ReminderScheduler:
         # check if today matches frequency pattern
         return days_since_start % frequency_days == 0
     
+    def check_and_complete_schedule(self, db, schedule_obj, today):
+        """check if schedule should be completed and mark it inactive"""
+        days_since_start = (today - schedule_obj.start_date.date()).days
+        
+        # if cycle complete and not already marked
+        if days_since_start >= schedule_obj.cycle_duration_days and schedule_obj.is_active:
+            schedule_obj.is_active = False
+            schedule_obj.completed_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"marked schedule {schedule_obj.id} as completed")
+            return True
+        return False
+    
     async def send_reminder(self, user_telegram_id, message):
         """send reminder message to user"""
         try:
@@ -138,6 +151,26 @@ class ReminderScheduler:
                 return
             
             for schedule_obj in active_schedules:
+                # get user info first (needed for both reminders and completions)
+                user = db.query(User).filter(User.id == schedule_obj.user_id).first()
+                if not user:
+                    continue
+                
+                # check if schedule should be completed
+                if self.check_and_complete_schedule(db, schedule_obj, today):
+                    # send completion notification
+                    rest_end_date = today + timedelta(days=schedule_obj.rest_period_days)
+                    completion_message = (
+                        f"🎉 <b>Cycle Complete!</b>\n\n"
+                        f"💊 Peptide: <b>{schedule_obj.peptide_name}</b>\n"
+                        f"✅ You've completed your {schedule_obj.cycle_duration_days}-day cycle!\n\n"
+                        f"😴 <b>Rest Period:</b> {schedule_obj.rest_period_days} days\n"
+                        f"📅 <b>Can restart:</b> {rest_end_date.strftime('%B %d, %Y')}\n\n"
+                        f"Great work on completing your cycle! 🧬"
+                    )
+                    await self.send_reminder(user.telegram_id, completion_message)
+                    continue
+                
                 # check if reminder needed today
                 if not self.should_send_reminder_today(schedule_obj, today):
                     continue
@@ -151,11 +184,6 @@ class ReminderScheduler:
                 
                 if existing_reminder:
                     continue  # already sent today
-                
-                # get user info
-                user = db.query(User).filter(User.id == schedule_obj.user_id).first()
-                if not user:
-                    continue
                 
                 # create reminder message
                 days_remaining = schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days

@@ -24,7 +24,7 @@ See [schedule_example.md](schedule_example.md) for more formats.
 2. Go to [railway.app](https://railway.app)
 3. Create new project → Deploy from GitHub
 4. Add environment variable: `TELEGRAM_BOT_TOKEN`
-5. Both web and worker services will start automatically
+5. Service will auto-deploy (single process with embedded reminder worker)
 
 ### Local Development
 ```bash
@@ -59,7 +59,19 @@ All these formats are tested and working:
 
 ## Features
 
-- Natural language schedule parsing ("GHK-Cu 1mg daily for 6 weeks")
-- Daily 8:00 AM reminders
-- Cycle duration tracking
-- SQLite database storage # Production mode - 8 AM daily reminders
+- 📝 Natural language schedule parsing ("GHK-Cu 1mg daily for 6 weeks")
+- ⏰ Daily 8:00 AM UTC reminders
+- 🔄 Auto-deactivation when cycles complete
+- 🎉 Completion notifications with rest period info
+- 📊 Enhanced status tracking (days remaining, restart dates)
+- 🛑 Manual schedule control (/stop, /stopall)
+- 💾 SQLite database storage
+- 🔒 Input validation and security
+
+## Commands
+
+- `/start` - Initialize the bot
+- `/help` - Show help message
+- `/status` - View active schedules with days remaining
+- `/stop [peptide]` - Deactivate specific schedule
+- `/stopall` - Deactivate all schedules
