@@ -8,7 +8,8 @@ import certifi
 import time
 import asyncio
 from datetime import datetime, timedelta
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config.settings import get_bot_token, logger
 from database.operations import init_database, get_or_create_user, create_schedule, get_active_schedules, SessionLocal
 from database.models import User, Schedule, WorkerState
@@ -139,7 +140,8 @@ async def help_command(update, context):
         "📋 Commands:\n"
         "/start - Start the bot\n"
         "/help - Show this help\n"
-        "/status - Check your current schedule\n\n"
+        "/status - Check your current schedule\n"
+        "/clear - Stop schedules with buttons\n\n"
         "💊 To add a schedule, just send me text like:\n"
         "GHK-Cu 1mg daily for 6 weeks\n"
         "BPC-157 500mcg twice weekly for 8 weeks"
@@ -256,6 +258,68 @@ async def stopall_command(update, context):
     finally:
         db.close()
 
+async def clear_command(update, context):
+    """handle /clear command - show schedules with inline delete buttons"""
+    schedules = get_active_schedules(update.effective_user.id)
+    
+    if not schedules:
+        await update.message.reply_text("You have no active schedules to clear.")
+        return
+    
+    today = datetime.utcnow().date()
+    keyboard = []
+    
+    for schedule in schedules:
+        days_remaining = schedule.cycle_duration_days - (today - schedule.start_date.date()).days
+        button_text = f"❌ {schedule.peptide_name} ({max(0, days_remaining)}d left)"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"clear:{schedule.id}")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "🗑️ <b>Select a schedule to stop:</b>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def handle_clear_callback(update, context):
+    """handle inline button callbacks for clearing schedules"""
+    query = update.callback_query
+    await query.answer()
+    
+    if not query.data.startswith("clear:"):
+        return
+    
+    schedule_id = int(query.data.split(":")[1])
+    
+    db = SessionLocal()
+    try:
+        schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+        
+        if not schedule:
+            await query.edit_message_text("❌ Schedule not found.")
+            return
+        
+        # verify ownership
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user or schedule.user_id != user.id:
+            await query.edit_message_text("❌ Unauthorized.")
+            return
+        
+        peptide_name = schedule.peptide_name
+        schedule.is_active = False
+        schedule.completed_at = datetime.utcnow()
+        db.commit()
+        
+        await query.edit_message_text(
+            f"✅ Stopped <b>{peptide_name}</b>\n"
+            f"Use /clear to manage remaining schedules.",
+            parse_mode='HTML'
+        )
+        logger.info(f"user {user.telegram_id} cleared schedule {schedule_id} via button")
+        
+    finally:
+        db.close()
+
 async def handle_message(update, context):
     """handle all text messages"""
     message_text = update.message.text
@@ -322,6 +386,8 @@ def main():
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("stop", stop_command))
     application.add_handler(CommandHandler("stopall", stopall_command))
+    application.add_handler(CommandHandler("clear", clear_command))
+    application.add_handler(CallbackQueryHandler(handle_clear_callback, pattern="^clear:"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # check if running in production with webhook
