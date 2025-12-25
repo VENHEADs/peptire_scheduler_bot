@@ -13,7 +13,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 from config.settings import get_bot_token, logger
 from database.operations import init_database, get_or_create_user, create_schedule, get_active_schedules, SessionLocal
 from database.models import User, Schedule, WorkerState
-from parser.schedule_parser import parse_schedule
+from parser.schedule_parser import parse_schedule, days_to_readable
 from bot.scheduler import reminder_scheduler, calculate_seconds_until_next_8am
 
 # configure SSL for macOS
@@ -137,14 +137,21 @@ async def start(update, context):
 async def help_command(update, context):
     """handle /help command"""
     await update.message.reply_text(
-        "📋 Commands:\n"
+        "📋 <b>Commands:</b>\n"
         "/start - Start the bot\n"
         "/help - Show this help\n"
         "/status - Check your current schedule\n"
         "/clear - Stop schedules with buttons\n\n"
-        "💊 To add a schedule, just send me text like:\n"
-        "GHK-Cu 1mg daily for 6 weeks\n"
-        "BPC-157 500mcg twice weekly for 8 weeks"
+        "💊 <b>Schedule format:</b>\n"
+        "<code>name; dose; days; weeks</code>\n\n"
+        "📅 <b>Days patterns:</b>\n"
+        "• 1-7 = every day\n"
+        "• 1-5 = weekdays\n"
+        "• 1,3,5 = Mon/Wed/Fri\n\n"
+        "📝 <b>Examples:</b>\n"
+        "<code>GHK-Cu; 1mg; 1-7; 6</code>\n"
+        "<code>BPC-157; 500mcg; 1,3,5; 8</code>",
+        parse_mode='HTML'
     )
 
 async def status_command(update, context):
@@ -162,10 +169,11 @@ async def status_command(update, context):
         days_since_start = (today - schedule.start_date.date()).days
         days_remaining = schedule.cycle_duration_days - days_since_start
         rest_end_date = schedule.start_date.date() + timedelta(days=schedule.cycle_duration_days + schedule.rest_period_days)
+        schedule_days = days_to_readable(schedule.days_of_week) if schedule.days_of_week else schedule.frequency or "daily"
         
         response += f"💊 <b>{schedule.peptide_name}</b>\n"
         response += f"   📏 Dosage: {schedule.dosage}\n"
-        response += f"   ⏰ Frequency: {schedule.frequency}\n"
+        response += f"   ⏰ Schedule: {schedule_days}\n"
         response += f"   📅 Days remaining: {max(0, days_remaining)}\n"
         response += f"   😴 Rest period: {schedule.rest_period_days} days\n"
         response += f"   🔄 Can restart: {rest_end_date.strftime('%b %d, %Y')}\n\n"
@@ -342,27 +350,30 @@ async def handle_message(update, context):
             user_id=user.id,
             peptide_name=parsed.peptide_name,
             dosage=parsed.dosage,
-            frequency=parsed.frequency,
-            cycle_duration_days=parsed.cycle_duration_days,
+            days_of_week=parsed.days_of_week,
+            cycle_duration_weeks=parsed.weeks,
             rest_period_days=parsed.rest_period_days,
             notes=parsed.notes
         )
         
+        schedule_days = days_to_readable(parsed.days_of_week)
         await update.message.reply_text(
             f"✅ Schedule created!\n\n"
             f"💊 Peptide: {parsed.peptide_name}\n"
             f"📏 Dosage: {parsed.dosage}\n"
-            f"⏰ Frequency: {parsed.frequency}\n"
-            f"📅 Cycle: {parsed.cycle_duration_days} days\n"
+            f"⏰ Schedule: {schedule_days}\n"
+            f"📅 Duration: {parsed.weeks} weeks\n"
             f"😴 Rest: {parsed.rest_period_days} days\n\n"
-            f"🌅 I'll send you daily reminders at 8:00 AM!"
+            f"🌅 I'll remind you at 8:00 AM on scheduled days!"
         )
     else:
         await update.message.reply_text(
-            "❌ I couldn't understand that schedule format.\n\n"
-            "Please try something like:\n"
-            "GHK-Cu 1mg daily for 6 weeks\n"
-            "BPC-157 500mcg twice weekly for 8 weeks"
+            "❌ I couldn't understand that format.\n\n"
+            "📝 Use: <code>name; dose; days; weeks</code>\n\n"
+            "Examples:\n"
+            "<code>GHK-Cu; 1mg; 1-7; 6</code>\n"
+            "<code>BPC-157; 500mcg; 1,3,5; 8</code>",
+            parse_mode='HTML'
         )
 
 def main():

@@ -6,7 +6,6 @@ import ssl
 from datetime import datetime, timedelta
 from database.operations import SessionLocal, get_or_create_user
 from database.models import User, Schedule, Reminder
-from parser.schedule_parser import parse_frequency_to_days
 from telegram import Bot
 from telegram.request import HTTPXRequest
 from config.settings import get_bot_token
@@ -40,20 +39,23 @@ class ReminderScheduler:
         return self._bot
     
     def should_send_reminder_today(self, schedule_obj, today):
-        """check if user should get reminder today based on frequency"""
-        # TEST MODE: always send reminders
+        """check if user should get reminder today based on days_of_week"""
         if self.test_mode:
             return True
-            
+        
         days_since_start = (today - schedule_obj.start_date.date()).days
-        frequency_days = parse_frequency_to_days(schedule_obj.frequency)
         
         # check if cycle is still active
         if days_since_start >= schedule_obj.cycle_duration_days:
             return False
-            
-        # check if today matches frequency pattern
-        return days_since_start % frequency_days == 0
+        
+        # check if today's weekday matches schedule (ISO: Monday=1, Sunday=7)
+        today_weekday = str(today.isoweekday())
+        if schedule_obj.days_of_week:
+            return today_weekday in schedule_obj.days_of_week.split(',')
+        
+        # fallback for legacy schedules without days_of_week
+        return True
     
     def check_and_complete_schedule(self, db, schedule_obj, today):
         """check if schedule should be completed and mark it inactive"""

@@ -1,38 +1,36 @@
-import re
 import logging
-from typing import Dict, Optional
+import re
 from dataclasses import dataclass
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # security constants
 MAX_PEPTIDE_NAME_LENGTH = 100
 MAX_DOSAGE_LENGTH = 50
-MAX_NOTES_LENGTH = 500
-MAX_CYCLE_DAYS = 365
-MIN_CYCLE_DAYS = 1
+MAX_WEEKS = 52
+MIN_WEEKS = 1
 
 @dataclass
 class ParsedSchedule:
     """structured peptide schedule data"""
     peptide_name: str
     dosage: str
-    frequency: str
-    cycle_duration_days: int
+    days_of_week: str  # "1,2,3,4,5,6,7" format
+    weeks: int
     rest_period_days: int
     notes: str = ""
 
 def sanitize_input(text: str) -> str:
     """sanitize user input to prevent injection attacks"""
-    # remove any potential SQL injection characters
-    text = re.sub(r'[;<>\"\'\\]', '', text)
+    # remove dangerous characters but keep semicolons for parsing
+    text = re.sub(r'[<>\"\'\\]', '', text)
     # normalize whitespace
     text = ' '.join(text.split())
     return text.strip()
 
 def validate_peptide_name(name: str) -> bool:
     """validate peptide name format"""
-    # allow letters, numbers, hyphens, and spaces
     if not re.match(r'^[a-zA-Z0-9\-\s]+$', name):
         return False
     if len(name) > MAX_PEPTIDE_NAME_LENGTH:
@@ -41,133 +39,129 @@ def validate_peptide_name(name: str) -> bool:
 
 def validate_dosage(dosage: str) -> bool:
     """validate dosage format"""
-    # allow numbers, units, and common dosage formats
     if not re.match(r'^[\d\.\s]+(mg|mcg|iu|ml|cc)$', dosage.lower()):
         return False
     if len(dosage) > MAX_DOSAGE_LENGTH:
         return False
     return True
 
-def parse_frequency_to_days(frequency: str) -> int:
-    """convert frequency text to days between doses"""
-    frequency = frequency.lower().strip()
+def parse_days_pattern(pattern: str) -> str | None:
+    """
+    Parse days pattern and return normalized "1,2,3" format.
     
-    if "daily" in frequency or "every day" in frequency:
-        return 1
-    elif "twice weekly" in frequency or "2x weekly" in frequency:
-        return 3  # approximately every 3-4 days
-    elif "once weekly" in frequency or "weekly" in frequency:
-        return 7
-    elif "every other day" in frequency or "eod" in frequency:
-        return 2
-    elif "3x weekly" in frequency or "three times weekly" in frequency:
-        return 2  # approximately every 2-3 days
-    else:
-        return 1  # default to daily
+    Accepts:
+    - "1-7" → "1,2,3,4,5,6,7" (range)
+    - "1-5" → "1,2,3,4,5" (weekdays)
+    - "1,3,5" → "1,3,5" (specific days)
+    
+    Returns None if invalid.
+    """
+    pattern = pattern.strip()
+    
+    # check for range format: "1-7" or "1-5"
+    range_match = re.match(r'^(\d)-(\d)$', pattern)
+    if range_match:
+        start, end = int(range_match.group(1)), int(range_match.group(2))
+        if 1 <= start <= 7 and 1 <= end <= 7 and start <= end:
+            return ','.join(str(d) for d in range(start, end + 1))
+        return None
+    
+    # check for list format: "1,3,5"
+    if re.match(r'^[\d,]+$', pattern):
+        days = [d.strip() for d in pattern.split(',') if d.strip()]
+        valid_days = []
+        for d in days:
+            if d.isdigit() and 1 <= int(d) <= 7:
+                valid_days.append(d)
+            else:
+                return None
+        if valid_days:
+            return ','.join(sorted(set(valid_days), key=int))
+    
+    return None
 
-def parse_duration_to_days(duration_text: str) -> int:
-    """convert duration text to days"""
-    duration_text = duration_text.lower().strip()
+def days_to_readable(days_of_week: str) -> str:
+    """convert days_of_week to human readable format"""
+    day_names = {
+        '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu',
+        '5': 'Fri', '6': 'Sat', '7': 'Sun'
+    }
+    days = days_of_week.split(',')
     
-    # extract numbers and units
-    weeks_match = re.search(r'(\d+)\s*week', duration_text)
-    days_match = re.search(r'(\d+)\s*day', duration_text)
-    months_match = re.search(r'(\d+)\s*month', duration_text)
-    
-    total_days = 0
-    if weeks_match:
-        total_days += int(weeks_match.group(1)) * 7
-    if days_match:
-        total_days += int(days_match.group(1))
-    if months_match:
-        total_days += int(months_match.group(1)) * 30
-    
-    # handle "0 days" case
-    if total_days == 0 and re.search(r'0\s*day', duration_text):
-        return 0  # explicitly return 0 for invalid duration
-        
-    return total_days if total_days > 0 else 42  # default 6 weeks
+    if days == ['1', '2', '3', '4', '5', '6', '7']:
+        return 'daily'
+    elif days == ['1', '2', '3', '4', '5']:
+        return 'weekdays'
+    elif days == ['6', '7']:
+        return 'weekends'
+    else:
+        return '/'.join(day_names.get(d, d) for d in days)
 
 def parse_schedule(text: str) -> Optional[ParsedSchedule]:
     """
-    Parse natural language peptide schedule.
+    Parse semicolon-separated peptide schedule.
     
-    Security: All inputs are sanitized and validated
+    Format: peptide name; dosage; days; weeks
+    Examples:
+    - "GHK-Cu; 1mg; 1-7; 6" → daily for 6 weeks
+    - "BPC-157; 500mcg; 1,3,5; 8" → Mon/Wed/Fri for 8 weeks
     """
-    if not text or len(text) > 500:  # max input length
+    if not text or len(text) > 200:
         return None
-        
-    # sanitize input
+    
     text = sanitize_input(text)
-    text_lower = text.lower()
+    parts = [p.strip() for p in text.split(';')]
     
-    # pattern: "peptide dosage frequency for duration"
-    # examples: "GHK-Cu 1mg daily for 6 weeks"
-    #          "BPC-157 500mcg twice weekly for 8 weeks"
-    
-    # first find the dosage to know where peptide name ends
-    dosage_match = re.search(r'(\d+\.?\d*)\s*(mg|mcg|iu|ml|cc|μg|ug)', text_lower)
-    if not dosage_match:
+    if len(parts) != 4:
+        logger.warning(f"expected 4 parts, got {len(parts)}")
         return None
     
-    dosage_start = dosage_match.start()
-    dosage_value = dosage_match.group(1)
-    dosage_unit = dosage_match.group(2)
+    peptide_name, dosage, days_pattern, weeks_str = parts
     
-    # handle unicode μ
-    if dosage_unit in ['μg', 'ug']:
-        dosage_unit = 'mcg'
-    
-    dosage = f"{dosage_value}{dosage_unit}"
-    if not validate_dosage(dosage):
-        logger.warning(f"invalid dosage: {dosage}")
-        return None
-    
-    # peptide name is everything before the dosage
-    peptide_name = text[:dosage_start].strip()
+    # validate peptide name
     if not peptide_name or not validate_peptide_name(peptide_name):
         logger.warning(f"invalid peptide name: {peptide_name}")
         return None
     
-    # extract the rest after dosage
-    rest_of_text = text[dosage_match.end():].strip()
-    
-    # look for "for" to separate frequency from duration
-    for_match = re.search(r'\s+for\s+', rest_of_text, re.IGNORECASE)
-    if not for_match:
+    # validate and normalize dosage
+    dosage = dosage.lower().replace(' ', '')
+    # handle unicode μ
+    dosage = dosage.replace('μg', 'mcg').replace('ug', 'mcg')
+    if not validate_dosage(dosage):
+        logger.warning(f"invalid dosage: {dosage}")
         return None
     
-    frequency = rest_of_text[:for_match.start()].strip()
-    duration_text = rest_of_text[for_match.end():].strip()
-    
-    if not frequency:
-        frequency = "daily"  # default frequency
-    
-    # parse duration
-    cycle_duration_days = parse_duration_to_days(duration_text)
-    
-    # validate cycle duration
-    if cycle_duration_days < MIN_CYCLE_DAYS or cycle_duration_days > MAX_CYCLE_DAYS:
-        logger.warning(f"invalid cycle duration: {cycle_duration_days}")
+    # parse days pattern
+    days_of_week = parse_days_pattern(days_pattern)
+    if not days_of_week:
+        logger.warning(f"invalid days pattern: {days_pattern}")
         return None
     
-    # default rest periods based on common peptide protocols
-    rest_period_days = cycle_duration_days  # equal rest to cycle duration
+    # parse weeks
+    try:
+        weeks = int(weeks_str)
+        if weeks < MIN_WEEKS or weeks > MAX_WEEKS:
+            logger.warning(f"weeks out of range: {weeks}")
+            return None
+    except ValueError:
+        logger.warning(f"invalid weeks value: {weeks_str}")
+        return None
     
-    # special cases for known peptides
+    # calculate rest period based on peptide
+    rest_period_days = weeks * 7  # default: equal rest to cycle
     peptide_lower = peptide_name.lower()
     if "foxo4" in peptide_lower:
-        rest_period_days = 120  # 4+ months rest for FOXO4-DRI
+        rest_period_days = 120
     elif "epithalon" in peptide_lower:
-        rest_period_days = 180  # 6 months rest for Epithalon
+        rest_period_days = 180
     elif "tb-500" in peptide_lower:
-        rest_period_days = 60   # 2-3 months rest for TB-500
+        rest_period_days = 60
     
     return ParsedSchedule(
         peptide_name=peptide_name,
         dosage=dosage,
-        frequency=frequency,
-        cycle_duration_days=cycle_duration_days,
+        days_of_week=days_of_week,
+        weeks=weeks,
         rest_period_days=rest_period_days,
         notes=f"Parsed from: {text}"
-    ) 
+    )

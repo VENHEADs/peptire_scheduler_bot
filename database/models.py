@@ -28,7 +28,8 @@ class Schedule(Base):
     # peptide info
     peptide_name = Column(String(100), nullable=False)
     dosage = Column(String(50), nullable=False)
-    frequency = Column(String(100), nullable=False)  # "daily", "twice weekly", etc.
+    frequency = Column(String(100), nullable=True)  # legacy field
+    days_of_week = Column(String(20), nullable=True)  # "1,2,3,4,5,6,7" or "1,3,5" etc.
     
     # cycle info
     cycle_duration_days = Column(Integer, nullable=False)
