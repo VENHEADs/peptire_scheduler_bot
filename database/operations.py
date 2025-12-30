@@ -33,8 +33,8 @@ def _migrate_legacy_schedules():
     db = SessionLocal()
     try:
         schedules = db.query(Schedule).filter(
-            Schedule.days_of_week == None,
-            Schedule.frequency != None
+            Schedule.days_of_week.is_(None),
+            Schedule.frequency.isnot(None)
         ).all()
         
         for schedule in schedules:
