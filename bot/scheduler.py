@@ -153,9 +153,12 @@ class ReminderScheduler:
                 return
             
             for schedule_obj in active_schedules:
+                logger.info(f"processing schedule: {schedule_obj.peptide_name} (id={schedule_obj.id}, days_of_week={schedule_obj.days_of_week})")
+                
                 # get user info first (needed for both reminders and completions)
                 user = db.query(User).filter(User.id == schedule_obj.user_id).first()
                 if not user:
+                    logger.warning(f"skipping {schedule_obj.peptide_name}: user not found")
                     continue
                 
                 # check if schedule should be completed
@@ -174,7 +177,12 @@ class ReminderScheduler:
                     continue
                 
                 # check if reminder needed today
-                if not self.should_send_reminder_today(schedule_obj, today):
+                today_weekday = today.isoweekday()
+                should_remind = self.should_send_reminder_today(schedule_obj, today)
+                logger.info(f"{schedule_obj.peptide_name}: weekday={today_weekday}, should_remind={should_remind}")
+                
+                if not should_remind:
+                    logger.info(f"skipping {schedule_obj.peptide_name}: not scheduled for today")
                     continue
                 
                 # check if reminder already sent today
@@ -185,7 +193,8 @@ class ReminderScheduler:
                 ).first()
                 
                 if existing_reminder:
-                    continue  # already sent today
+                    logger.info(f"skipping {schedule_obj.peptide_name}: already sent at {existing_reminder.reminder_date}")
+                    continue
                 
                 # create reminder message
                 days_remaining = schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days
