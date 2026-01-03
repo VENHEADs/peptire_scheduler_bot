@@ -69,54 +69,64 @@ async def run_reminder_with_retry(max_retries=3):
     return False
 
 def reminder_worker():
-    """reminder worker function that runs in background thread"""
+    """reminder worker function that runs in background thread with persistent event loop"""
     logger.info("starting optimized reminder worker - 8 AM daily scheduling...")
     
-    # run first reminder immediately
-    logger.info("running initial reminder check...")
-    try:
-        asyncio.run(run_reminder_with_retry())
-        logger.info("initial reminder check completed successfully")
-    except Exception as e:
-        logger.exception(f"initial reminder check failed: {e}")
+    # create a persistent event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    iteration = 0
-    while True:
+    async def async_worker():
+        """async worker that runs in persistent event loop"""
+        # run first reminder immediately
+        logger.info("running initial reminder check...")
         try:
-            iteration += 1
-            logger.info(f"starting reminder iteration #{iteration}")
-            
-            # PRODUCTION MODE: calculate sleep time until next 8 AM
-            sleep_seconds, next_8am = calculate_seconds_until_next_8am()
-            logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
-            time.sleep(sleep_seconds)
-            
-            logger.info(f"woke up at 8 AM, starting reminder iteration #{iteration}")
-            
-            # execute daily reminders with retry
-            logger.info("calling run_reminder_with_retry()...")
-            success = asyncio.run(run_reminder_with_retry())
-            
-            if not success:
-                logger.error("failed to send reminders after all retries")
-            else:
-                logger.info("reminder check completed successfully")
-                
-            logger.info(f"completed reminder iteration #{iteration}, continuing loop...")
-            
-            # small buffer to avoid immediate re-execution
-            time.sleep(60)
-                
-        except KeyboardInterrupt:
-            logger.info("reminder worker stopped by keyboard interrupt")
-            break
+            await run_reminder_with_retry()
+            logger.info("initial reminder check completed successfully")
         except Exception as e:
-            logger.exception(f"unexpected error in reminder worker iteration #{iteration}: {e}")
-            logger.info("continuing after error...")
-            # sleep 1 hour on error in production mode
-            time.sleep(3600)
+            logger.exception(f"initial reminder check failed: {e}")
+        
+        iteration = 0
+        while True:
+            try:
+                iteration += 1
+                logger.info(f"starting reminder iteration #{iteration}")
+                
+                # calculate sleep time until next 8 AM
+                sleep_seconds, next_8am = calculate_seconds_until_next_8am()
+                logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
+                await asyncio.sleep(sleep_seconds)
+                
+                logger.info(f"woke up at 8 AM, starting reminder iteration #{iteration}")
+                
+                # execute daily reminders with retry
+                logger.info("calling run_reminder_with_retry()...")
+                success = await run_reminder_with_retry()
+                
+                if not success:
+                    logger.error("failed to send reminders after all retries")
+                else:
+                    logger.info("reminder check completed successfully")
+                    
+                logger.info(f"completed reminder iteration #{iteration}, continuing loop...")
+                
+                # small buffer to avoid immediate re-execution
+                await asyncio.sleep(60)
+                    
+            except asyncio.CancelledError:
+                logger.info("reminder worker cancelled")
+                break
+            except Exception as e:
+                logger.exception(f"unexpected error in reminder worker iteration #{iteration}: {e}")
+                logger.info("continuing after error...")
+                await asyncio.sleep(3600)
+        
+        logger.error("reminder worker exited main loop - this should not happen!")
     
-    logger.error("reminder worker exited main loop - this should not happen!")
+    try:
+        loop.run_until_complete(async_worker())
+    finally:
+        loop.close()
 
 async def start(update, context):
     """handle /start command"""
