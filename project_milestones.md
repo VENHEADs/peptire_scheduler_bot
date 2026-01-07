@@ -2,7 +2,7 @@
 
 ## Phase 1: Foundation
 - [x] 1. Create documentation.md - project overview, module map, setup instructions
-- [x] 2. Create project_milestones.md - numbered checklist with GitHub-style task boxes  
+- [x] 2. Create project_milestones.md - numbered checklist with GitHub-style task boxes
 - [x] 3. Initialize Python project - requirements.txt, main structure, .gitignore
 - [x] 4. Create Telegram bot token - BotFather registration, environment setup
 
@@ -12,7 +12,7 @@
 - [x] 7. Schedule parser - natural language → structured peptide data
 - [x] 8. Daily reminder engine - morning notifications "today you need to take XXX"
 
-## Phase 3: Schedule Management  
+## Phase 3: Schedule Management
 - [x] 9. Add/edit schedule commands - parse user input from example format
 - [x] 10. Cycle tracking - start dates, duration countdown, rest periods
 - [x] 11. User commands - /start, /status, /stop, /stopall, /help
@@ -39,17 +39,19 @@
 - [x] 26. Environment configuration - env.example template
 - [ ] 27. Integration tests - end-to-end bot testing
 - [ ] 28. Load testing - handle multiple users
+- [x] 29. Pre-commit hooks - ruff linter/formatter, trailing whitespace, fast tests
 
 ## Phase 7: Refactor & Production Readiness (2025-11-05)
-- [x] 29. Fix test environment - allow tests without bot token
-- [x] 30. Schedule lifecycle - auto-deactivation when cycles complete
-- [x] 31. Completion notifications - notify users when cycles end with rest period info
-- [x] 32. Enhanced /status - show days remaining, next dose dates
-- [x] 33. Stop commands - /stop and /stopall implemented
-- [x] 34. Architecture cleanup - removed unused worker.py
+- [x] 30. Fix test environment - allow tests without bot token
+- [x] 31. Schedule lifecycle - auto-deactivation when cycles complete
+- [x] 32. Completion notifications - notify users when cycles end with rest period info
+- [x] 33. Enhanced /status - show days remaining, next dose dates
+- [x] 34. Stop commands - /stop and /stopall implemented
+- [x] 35. Architecture cleanup - removed unused worker.py
 
 ## Current Status
 - **Active Milestone**: Production-ready for Railway deployment
 - **Next Up**: Deploy to Railway and monitor in production
 - **Blockers**: None
-- **Tests**: 15/16 passing (1 pre-existing test issue unrelated to refactor) 
+- **Tests**: 16/16 passing
+- **Pre-commit**: ruff + pytest fast tests on every commit

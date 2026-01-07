@@ -1,24 +1,27 @@
-import logging
-import time
 import asyncio
+import logging
 import os
 import ssl
+import time
 from datetime import datetime, timedelta
-from database.operations import SessionLocal, get_or_create_user
-from database.models import User, Schedule, Reminder
+
 from telegram import Bot
 from telegram.request import HTTPXRequest
+
 from config.settings import get_bot_token
+from database.models import Reminder, Schedule, User
+from database.operations import SessionLocal
 
 # configure SSL for macOS
-if os.name == 'posix' and os.uname().sysname == 'Darwin':
+if os.name == "posix" and os.uname().sysname == "Darwin":
     ssl._create_default_https_context = ssl._create_unverified_context
 
 logger = logging.getLogger(__name__)
 
+
 class ReminderScheduler:
     """handles daily reminder notifications"""
-    
+
     def __init__(self, test_mode=False):
         # defer bot creation until first use for lazy validation
         self._bot = None
@@ -27,40 +30,40 @@ class ReminderScheduler:
             read_timeout=30,
             write_timeout=30,
             connect_timeout=30,
-            pool_timeout=30
+            pool_timeout=30,
         )
         self.test_mode = test_mode
-    
+
     @property
     def bot(self):
         """lazy initialization of bot instance"""
         if self._bot is None:
             self._bot = Bot(token=get_bot_token(), request=self._request)
         return self._bot
-    
+
     def should_send_reminder_today(self, schedule_obj, today):
         """check if user should get reminder today based on days_of_week"""
         if self.test_mode:
             return True
-        
+
         days_since_start = (today - schedule_obj.start_date.date()).days
-        
+
         # check if cycle is still active
         if days_since_start >= schedule_obj.cycle_duration_days:
             return False
-        
+
         # check if today's weekday matches schedule (ISO: Monday=1, Sunday=7)
         today_weekday = str(today.isoweekday())
         if schedule_obj.days_of_week:
-            return today_weekday in schedule_obj.days_of_week.split(',')
-        
+            return today_weekday in schedule_obj.days_of_week.split(",")
+
         # fallback for legacy schedules without days_of_week
         return True
-    
+
     def check_and_complete_schedule(self, db, schedule_obj, today):
         """check if schedule should be completed and mark it inactive"""
         days_since_start = (today - schedule_obj.start_date.date()).days
-        
+
         # if cycle complete and not already marked
         if days_since_start >= schedule_obj.cycle_duration_days and schedule_obj.is_active:
             schedule_obj.is_active = False
@@ -69,47 +72,41 @@ class ReminderScheduler:
             logger.info(f"marked schedule {schedule_obj.id} as completed")
             return True
         return False
-    
+
     async def send_reminder(self, user_telegram_id, message):
         """send reminder message to user"""
         try:
-            await self.bot.send_message(
-                chat_id=user_telegram_id,
-                text=message,
-                parse_mode='HTML'
-            )
+            await self.bot.send_message(chat_id=user_telegram_id, text=message, parse_mode="HTML")
             logger.info(f"sent reminder to user {user_telegram_id}")
             return True
         except Exception as e:
             logger.exception(f"failed to send reminder to {user_telegram_id}: {e}")
             return False
-    
+
     async def process_daily_reminders(self):
         """process all users and send daily reminders"""
         if self.test_mode:
             logger.info("processing TEST reminders (every minute)...")
-            
+
             # SIMPLE TEST MODE: send to all active schedules every time
             db = SessionLocal()
             try:
                 # get all active schedules
-                active_schedules = db.query(Schedule).filter(
-                    Schedule.is_active == True
-                ).all()
-                
+                active_schedules = db.query(Schedule).filter(Schedule.is_active == True).all()
+
                 logger.info(f"found {len(active_schedules)} active schedules")
-                
+
                 if not active_schedules:
                     logger.info("no active schedules found")
                     return
-                
+
                 for schedule_obj in active_schedules:
                     # get user info
                     user = db.query(User).filter(User.id == schedule_obj.user_id).first()
                     if not user:
                         logger.warning(f"user not found for schedule {schedule_obj.id}")
                         continue
-                    
+
                     # create simple test message
                     test_message = (
                         f"🧪 TEST REMINDER #{datetime.utcnow().minute}\n\n"
@@ -118,49 +115,51 @@ class ReminderScheduler:
                         f"⏰ Frequency: <b>{schedule_obj.frequency}</b>\n\n"
                         f"This is a test reminder sent every minute! 🔔"
                     )
-                    
+
                     # send reminder
                     logger.info(f"sending test reminder to user {user.telegram_id}")
                     success = await self.send_reminder(user.telegram_id, test_message)
-                    
+
                     if success:
-                        logger.info(f"✅ test reminder sent successfully to user {user.telegram_id}")
+                        logger.info(
+                            f"✅ test reminder sent successfully to user {user.telegram_id}"
+                        )
                     else:
                         logger.error(f"❌ failed to send test reminder to user {user.telegram_id}")
-                
+
                 logger.info("TEST reminders processing complete")
                 return
-                
+
             except Exception as e:
                 logger.exception(f"error in test mode: {e}")
                 return
             finally:
                 db.close()
-        
+
         # NORMAL MODE (original logic)
         logger.info("processing daily reminders...")
         today = datetime.utcnow().date()
-        
+
         db = SessionLocal()
         try:
             # get all active schedules
-            active_schedules = db.query(Schedule).filter(
-                Schedule.is_active == True
-            ).all()
-            
+            active_schedules = db.query(Schedule).filter(Schedule.is_active == True).all()
+
             if not active_schedules:
                 logger.info("no active schedules found")
                 return
-            
+
             for schedule_obj in active_schedules:
-                logger.info(f"processing schedule: {schedule_obj.peptide_name} (id={schedule_obj.id}, days_of_week={schedule_obj.days_of_week})")
-                
+                logger.info(
+                    f"processing schedule: {schedule_obj.peptide_name} (id={schedule_obj.id}, days_of_week={schedule_obj.days_of_week})"
+                )
+
                 # get user info first (needed for both reminders and completions)
                 user = db.query(User).filter(User.id == schedule_obj.user_id).first()
                 if not user:
                     logger.warning(f"skipping {schedule_obj.peptide_name}: user not found")
                     continue
-                
+
                 # check if schedule should be completed
                 if self.check_and_complete_schedule(db, schedule_obj, today):
                     # send completion notification
@@ -175,30 +174,40 @@ class ReminderScheduler:
                     )
                     await self.send_reminder(user.telegram_id, completion_message)
                     continue
-                
+
                 # check if reminder needed today
                 today_weekday = today.isoweekday()
                 should_remind = self.should_send_reminder_today(schedule_obj, today)
-                logger.info(f"{schedule_obj.peptide_name}: weekday={today_weekday}, should_remind={should_remind}")
-                
+                logger.info(
+                    f"{schedule_obj.peptide_name}: weekday={today_weekday}, should_remind={should_remind}"
+                )
+
                 if not should_remind:
                     logger.info(f"skipping {schedule_obj.peptide_name}: not scheduled for today")
                     continue
-                
+
                 # check if reminder already sent today
-                existing_reminder = db.query(Reminder).filter(
-                    Reminder.schedule_id == schedule_obj.id,
-                    Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
-                    Reminder.is_sent == True
-                ).first()
-                
+                existing_reminder = (
+                    db.query(Reminder)
+                    .filter(
+                        Reminder.schedule_id == schedule_obj.id,
+                        Reminder.reminder_date >= datetime.combine(today, datetime.min.time()),
+                        Reminder.is_sent == True,
+                    )
+                    .first()
+                )
+
                 if existing_reminder:
-                    logger.info(f"skipping {schedule_obj.peptide_name}: already sent at {existing_reminder.reminder_date}")
+                    logger.info(
+                        f"skipping {schedule_obj.peptide_name}: already sent at {existing_reminder.reminder_date}"
+                    )
                     continue
-                
+
                 # create reminder message
-                days_remaining = schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days
-                
+                days_remaining = (
+                    schedule_obj.cycle_duration_days - (today - schedule_obj.start_date.date()).days
+                )
+
                 message = (
                     f"🌅 <b>Good morning!</b>\n\n"
                     f"💊 Today you need to take: <b>{schedule_obj.peptide_name}</b>\n"
@@ -206,69 +215,73 @@ class ReminderScheduler:
                     f"📅 Days remaining in cycle: <b>{days_remaining}</b>\n\n"
                     f"Have a great day! 🧬"
                 )
-                
+
                 # send reminder
                 success = await self.send_reminder(user.telegram_id, message)
-                
+
                 # create reminder record
                 reminder = Reminder(
-                    schedule_id=schedule_obj.id,
-                    reminder_date=datetime.utcnow(),
-                    is_sent=success
+                    schedule_id=schedule_obj.id, reminder_date=datetime.utcnow(), is_sent=success
                 )
                 if success:
                     reminder.sent_at = datetime.utcnow()
-                
+
                 db.add(reminder)
-                
+
             db.commit()
             logger.info("daily reminders processing complete")
-            
+
         except Exception as e:
             logger.exception(f"error processing reminders: {e}")
             db.rollback()
         finally:
             db.close()
 
+
 # create scheduler instance with production mode (not test mode)
 reminder_scheduler = ReminderScheduler(test_mode=False)
+
 
 def run_daily_reminders():
     """sync wrapper for daily reminders"""
     asyncio.run(reminder_scheduler.process_daily_reminders())
 
+
 def calculate_seconds_until_next_8am():
     """calculate seconds to sleep until next 8:00 AM"""
     now = datetime.now()
     next_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
-    
+
     # if past 8 AM today, schedule for tomorrow
     if now.hour >= 8:
         next_8am += timedelta(days=1)
-    
+
     sleep_seconds = (next_8am - now).total_seconds()
     return sleep_seconds, next_8am
+
 
 def start_reminder_worker():
     """optimized reminder worker - sleeps until needed"""
     logger.info("starting optimized reminder scheduler...")
-    
+
     while True:
         try:
             # calculate sleep time until next 8 AM
             sleep_seconds, next_8am = calculate_seconds_until_next_8am()
-            
-            logger.info(f"sleeping {sleep_seconds/3600:.1f} hours until next reminder: {next_8am}")
+
+            logger.info(
+                f"sleeping {sleep_seconds / 3600:.1f} hours until next reminder: {next_8am}"
+            )
             time.sleep(sleep_seconds)
-            
+
             # execute daily reminders
             logger.info("waking up to send daily reminders...")
             run_daily_reminders()
-            
+
             # small buffer to avoid immediate re-execution
             time.sleep(60)
-            
+
         except Exception as e:
             logger.exception(f"error in reminder worker: {e}")
             # fallback: sleep 1 hour on error
-            time.sleep(3600) 
+            time.sleep(3600)

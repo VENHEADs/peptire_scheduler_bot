@@ -1,17 +1,18 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from config.settings import DATABASE_URL
-from database.models import Base, User, Schedule, Reminder
+from database.models import Base, Schedule, User
 
 logger = logging.getLogger(__name__)
 
 # create database engine
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def _frequency_to_days(frequency: str) -> str:
     """convert legacy frequency string to days_of_week format"""
@@ -28,24 +29,29 @@ def _frequency_to_days(frequency: str) -> str:
         return "1"  # monday only
     return "1,2,3,4,5,6,7"  # default to daily
 
+
 def _migrate_legacy_schedules():
     """migrate schedules with frequency to days_of_week"""
     db = SessionLocal()
     try:
-        schedules = db.query(Schedule).filter(
-            Schedule.days_of_week.is_(None),
-            Schedule.frequency.isnot(None)
-        ).all()
-        
+        schedules = (
+            db.query(Schedule)
+            .filter(Schedule.days_of_week.is_(None), Schedule.frequency.isnot(None))
+            .all()
+        )
+
         for schedule in schedules:
             schedule.days_of_week = _frequency_to_days(schedule.frequency)
-            logger.info(f"migrated schedule {schedule.id}: {schedule.frequency} -> {schedule.days_of_week}")
-        
+            logger.info(
+                f"migrated schedule {schedule.id}: {schedule.frequency} -> {schedule.days_of_week}"
+            )
+
         if schedules:
             db.commit()
             logger.info(f"migrated {len(schedules)} legacy schedules")
     finally:
         db.close()
+
 
 def _add_column_if_missing():
     """add days_of_week column if it doesn't exist (SQLite migration)"""
@@ -57,12 +63,14 @@ def _add_column_if_missing():
             conn.commit()
             logger.info("added days_of_week column to schedules table")
 
+
 def init_database():
     """create all database tables and run migrations"""
     Base.metadata.create_all(bind=engine)
     _add_column_if_missing()
     _migrate_legacy_schedules()
     logger.info("database initialized")
+
 
 def get_db():
     """get database session"""
@@ -72,8 +80,10 @@ def get_db():
     finally:
         db.close()
 
-def get_or_create_user(telegram_id: int, username: str = None, 
-                      first_name: str = None, last_name: str = None):
+
+def get_or_create_user(
+    telegram_id: int, username: str = None, first_name: str = None, last_name: str = None
+):
     """get existing user or create new one"""
     db = SessionLocal()
     try:
@@ -83,7 +93,7 @@ def get_or_create_user(telegram_id: int, username: str = None,
                 telegram_id=telegram_id,
                 username=username,
                 first_name=first_name,
-                last_name=last_name
+                last_name=last_name,
             )
             db.add(user)
             db.commit()
@@ -93,9 +103,16 @@ def get_or_create_user(telegram_id: int, username: str = None,
     finally:
         db.close()
 
-def create_schedule(user_id: int, peptide_name: str, dosage: str, 
-                   days_of_week: str, cycle_duration_weeks: int, 
-                   rest_period_days: int, notes: str | None = None):
+
+def create_schedule(
+    user_id: int,
+    peptide_name: str,
+    dosage: str,
+    days_of_week: str,
+    cycle_duration_weeks: int,
+    rest_period_days: int,
+    notes: str | None = None,
+):
     """create a new peptide schedule"""
     db = SessionLocal()
     try:
@@ -107,7 +124,7 @@ def create_schedule(user_id: int, peptide_name: str, dosage: str,
             cycle_duration_days=cycle_duration_weeks * 7,
             rest_period_days=rest_period_days,
             start_date=datetime.utcnow(),
-            notes=notes
+            notes=notes,
         )
         db.add(schedule)
         db.commit()
@@ -117,6 +134,7 @@ def create_schedule(user_id: int, peptide_name: str, dosage: str,
     finally:
         db.close()
 
+
 def get_active_schedules(telegram_id: int):
     """get all active schedules for a user"""
     db = SessionLocal()
@@ -124,11 +142,10 @@ def get_active_schedules(telegram_id: int):
         user = db.query(User).filter(User.telegram_id == telegram_id).first()
         if not user:
             return []
-        
-        schedules = db.query(Schedule).filter(
-            Schedule.user_id == user.id,
-            Schedule.is_active == True
-        ).all()
+
+        schedules = (
+            db.query(Schedule).filter(Schedule.user_id == user.id, Schedule.is_active == True).all()
+        )
         return schedules
     finally:
-        db.close() 
+        db.close()

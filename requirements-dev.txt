@@ -1,0 +1,4 @@
+# development dependencies - not needed in production
+-r requirements.txt
+pre-commit==3.6.0
+ruff==0.4.4
